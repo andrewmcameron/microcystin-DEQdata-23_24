@@ -1,0 +1,111 @@
+---
+title: "Merge & Align 2023/2024 Data"
+output: html_document
+---
+
+Merge 2023 and 2024 data and align analytical parameters by column					
+
+Fields: 
+`StationID	StationName	AdminRegion	DateTime	Depth	CHLa	TN	TP`
+
+Note: StationName and AdminRegion not available for all stations (to be added later).	
+
+Output: boxplots showing monthly values (May-Sep) across all stations sampled in a given year for CHLa, TN and TP (5 mo x 2 y = 10 boxes).	
+
+```{r}
+source("C:/Users/andre/my_functions.R")
+library(tidyverse)
+data23 <- openxlsx::read.xlsx("data/DEQ 2023-24 Reservoir Data for MC Survey.xlsx", sheet = 2)
+data24 <- openxlsx::read.xlsx("data/DEQ 2023-24 Reservoir Data for MC Survey.xlsx", sheet = 3)
+
+#Add missing columns and standardize column order
+data23 <- data23 %>%
+  mutate(AdminRegion = NA) %>%
+  relocate(AdminRegion, .after = StationName)
+
+data24 <- data24 %>%
+  mutate(StationName = NA) %>%
+  relocate(StationName, .after = StationId)
+
+
+#Create single dataframe with all obs
+names(data23) <- names(data24)
+data <- rbind(data23, data24)
+
+#Remove surface measurements and handle duplicates by taking the mean
+#other stuff that needs doin'
+data <- data %>%
+  mutate(CollectionDateTime = convertExcelDateTime(data, "CollectionDateTime")) %>%
+  filter(SamplingDepth > 0) %>%
+  group_by(StationId, StationName, AdminRegion, CollectionDateTime, SamplingDepth, Storetparameter) %>%
+  summarise(AnalyticalValue = mean(AnalyticalValue, na.rm = TRUE), .groups = "drop") %>%
+  mutate(month = month(CollectionDateTime),
+         year = year(CollectionDateTime),
+         month_year = format(CollectionDateTime, "%b-%Y")) %>%
+  mutate(month_year = sub("20", "", month_year))
+  
+
+#Transform data to align parameters by column
+data_wide <- data %>%
+  pivot_wider(names_from = Storetparameter, values_from = AnalyticalValue)
+
+params <- c("CHLa", "TN", "TP")
+names(data_wide)[9:11] <- params
+
+
+#Boxplots
+library(ggplot2)
+#CHLa
+data_wide %>%
+  filter(month %in% 5:9) %>%
+  filter(!is.na(CHLa)) %>%
+  ggplot(aes(x = month_year, y = CHLa)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, alpha = 0.45, size = 0.7) + 
+  labs(title = NULL, 
+       x = NULL, 
+       y = "CHLa (\u03BCg L\u207B\u00B9)") +
+  theme_minimal() +
+  theme(axis.line = element_line(colour = "black"))
+
+ggsave("figures/boxplot_CHLa.jpg", width = 8, height = 6, dpi = 500)
+
+#TN
+data_wide %>%
+  filter(month %in% 5:9) %>%
+  filter(!is.na(TN)) %>%
+  ggplot(aes(x = month_year, y = TN)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, alpha = 0.45, size = 0.7) + 
+  labs(title = NULL, 
+       x = NULL, 
+       y = "TN (mg N L\u207B\u00B9)") +
+  theme_minimal() +
+  theme(axis.line = element_line(colour = "black"))
+
+ggsave("figures/boxplot_TN.jpg", width = 8, height = 6, dpi = 500)
+
+#TP
+data_wide %>%
+  filter(month %in% 5:9) %>%
+  filter(!is.na(TP)) %>%
+  ggplot(aes(x = month_year, y = TP)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, alpha = 0.45, size = 0.7) + 
+  labs(title = NULL, 
+       x = NULL, 
+       y = "TP (mg N L\u207B\u00B9)") +
+  theme_minimal() +
+  theme(axis.line = element_line(colour = "black"))
+
+ggsave("figures/boxplot_TP.jpg", width = 8, height = 6, dpi = 500)
+
+```
+
+```{r}
+data_wide %>%
+  filter()
+
+```
+
+convertExcelDateTime(data, "DATE_TIME")
