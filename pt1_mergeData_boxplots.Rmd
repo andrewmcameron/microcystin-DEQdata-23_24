@@ -47,11 +47,11 @@ data <- data %>%
 
 #Transform data to align parameters by column
 data_wide <- data %>%
-  pivot_wider(names_from = Storetparameter, values_from = AnalyticalValue)
+  pivot_wider(names_from = Storetparameter, values_from = AnalyticalValue) %>%
+  filter(month %in% 5:9)
 
 params <- c("CHLa", "TN", "TP")
 names(data_wide)[9:11] <- params
-
 
 #Boxplots
 library(ggplot2)
@@ -100,12 +100,14 @@ data_wide %>%
 
 ggsave("figures/boxplot_TP.jpg", width = 8, height = 6, dpi = 500)
 
+#Data for export
+export_data <- data_wide %>%
+  select(-month, -year, -month_year) %>%
+  rename(DateTime = CollectionDateTime,
+         Depth = SamplingDepth)
+
+
+write_csv(export_data, "data/step1_data_MaytoSep_wide.csv")
+
+
 ```
-
-```{r}
-data_wide %>%
-  filter()
-
-```
-
-convertExcelDateTime(data, "DATE_TIME")

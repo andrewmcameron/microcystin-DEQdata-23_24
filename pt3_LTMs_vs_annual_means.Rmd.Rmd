@@ -1,0 +1,14 @@
+---
+title: 'Part 3:'
+output: html_document
+---
+
+Merge Annual average values for 2023 and 2024 with previously derived long-term average values (LTMs).		
+
+Note that this survey only includes a small subset of all the stations for which we have derived long-term average values.				
+Note that this survey also includes new stations for which there are no long-term average values.		
+
+Output: regressions of annual means vs. long-term means (e.g., CHLa23 and CHLa24 vs. CHLaLTM).	
+
+Fields:
+StationID	StationName	AdminRegion	Depth	CHLa23	TN23	TP23	CHLa24	TN24	TP24	CHLaLTM	TNLTM	TPLTM
