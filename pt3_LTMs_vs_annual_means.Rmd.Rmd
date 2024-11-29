@@ -1,9 +1,9 @@
 ---
-title: 'Part 3:'
+title: 'Part 3: Annual Means vs. Long-Term Means by Variable'
 output: html_document
 ---
 
-Merge Annual average values for 2023 and 2024 with previously derived long-term average values (LTMs).		
+*Merge Annual average values for 2023 and 2024 with previously derived long-term average values (LTMs).	*	
 
 Note that this survey only includes a small subset of all the stations for which we have derived long-term average values.				
 Note that this survey also includes new stations for which there are no long-term average values.		
@@ -12,3 +12,347 @@ Output: regressions of annual means vs. long-term means (e.g., CHLa23 and CHLa24
 
 Fields:
 StationID	StationName	AdminRegion	Depth	CHLa23	TN23	TP23	CHLa24	TN24	TP24	CHLaLTM	TNLTM	TPLTM
+
+# ---------------------
+
+Our previous LTMs are based on yearly averages for May-Oct, whereas Paul has specified that the months of interest here are May-Sep. 
+Will need to derive new yearly and LTMs for previous dataset before incorporating the new survey data.
+?? Ensure same methodology for yearly averages -- 'first' or 'mean' when multiple measurements on same date?
+
+Steps
+bring in previous water quality data 
+filter to only include stations of interest (i.e., those that are both in this survey and have LTM from previous analysis)
+merge new data (?) -- but isn't the "new" data already in the old data, at least the 2023, if from the same station?
+derive LTM from combined data
+generate output csv
+regressions
+plots
+
+## Load and Prepare Data
+```{r}
+library(tidyverse)
+# Data from previous water clarity analysis
+prev_data <- read_csv("~/Desktop/Bukaveckas_WaterLab/water-clarity-analysis/data/processed_dataset.csv") %>%
+  select(STATION_ID, DATE, CHLa, NITROGEN_TOTAL, PHOSPHORUS_TOTAL) %>%
+  rename(TN = NITROGEN_TOTAL, TP = PHOSPHORUS_TOTAL)
+
+prev_LTMs <- read_csv("~/Desktop/Bukaveckas_WaterLab/water-clarity-analysis/data/station_level_data/stationAverages_longTerm.csv")
+cur_data <- read_csv("data/StationObs_MaytoSep_wide.csv")
+
+# Stations of focus for this regression
+index <- which(unique(cur_data$StationId) %in% prev_LTMs$STATION_ID)
+stations <- unique(cur_data$StationId)[index]   # only 4 stations in common
+
+
+# Subset data from each data set to only include stations of interest
+subset_current <- cur_data %>%
+  filter(StationId %in% stations) %>%
+  mutate(dataset = "CurrentAnalysis") %>%
+  select(-c(AdminRegion, StationName, Depth)) %>%
+  rename(DATE = DateTime,
+         STATION_ID = StationId)  # to match column names
+
+subset_prev <- prev_data %>%
+  filter(STATION_ID %in% stations)  %>%
+  filter(month(DATE) != 10) %>%
+  mutate(dataset = "PreviousAnalysis") %>%
+  rename(DATE = DATE)  # to match column names
+
+# Merge data sets
+combined_data <- rbind(subset_current, subset_prev) %>%
+  arrange(STATION_ID, DATE)
+
+# Take mean of multiple observations on same date
+combined_data <- combined_data %>%
+  group_by(STATION_ID, DATE) %>%
+  summarize(CHLa = mean(CHLa, na.rm = TRUE),
+            TN = mean(TN, na.rm = TRUE),
+            TP = mean(TP, na.rm = TRUE),
+            .groups = "drop")
+
+```
+
+## Annual Averages and LTMs
+
+Derive annual averages by variable.
+Then use those to calculate a long-term mean for each parameter.
+
+```{r}
+LTMs_list <- list()
+
+for (var in c("CHLa", "TN", "TP")) {
+  annual_var <- combined_data %>%
+    group_by(STATION_ID, year = year(DATE)) %>%
+    summarize(mean = mean(!!sym(var), na.rm = TRUE),
+              .groups = "drop")
+  
+  LTM_var <- annual_var %>%
+    group_by(STATION_ID) %>%
+    summarize(LTM = mean(mean, na.rm = TRUE))
+  
+  LTMs_list[[paste0(var, "LTM")]] <- LTM_var
+
+}
+
+LTMs <- bind_rows(LTMs_list, .id = "param") %>%
+  pivot_wider(names_from = param, values_from = LTM)
+## 2-APP020.23 did NOT meet 10y threshold for inclusion in LTMs and trend statistics during water clarity analysis for either CHLa or TN. Only for TP
+
+
+# Join averages and LTMs
+stationAvgs <- read_csv("data/station_avg_by_year.csv")
+ann_plus_LTM <- stationAvgs %>%
+  left_join(LTMs, by = c("StationId" = "STATION_ID"))
+
+
+```
+
+## Regression Analyis: Annual Means vs. Long-Term Means
+
+```{r}
+# Prepare regression data
+## CHLa
+chla_data <- ann_plus_LTM %>%
+  filter(StationId %in% stations) %>%
+  select(StationId, CHLa23, CHLa24) %>%
+  gather(key = "variable", value = "value", -StationId) %>%
+  mutate(variable = factor(variable, levels = c("CHLa23", "CHLa24"))) %>%
+  left_join(LTMs, by = c("StationId" = "STATION_ID"))
+
+## TN 
+tn_data <- ann_plus_LTM %>%
+  filter(StationId %in% stations) %>%
+  select(StationId, TN23, TN24) %>%
+  gather(key = "variable", value = "value", -StationId) %>%
+  mutate(variable = factor(variable, levels = c("TN23", "TN24"))) %>%
+  left_join(LTMs, by = c("StationId" = "STATION_ID"))
+
+## TP
+tp_data <- ann_plus_LTM %>%
+  filter(StationId %in% stations) %>%
+  select(StationId, TP23, TP24) %>%
+  gather(key = "variable", value = "value", -StationId) %>%
+  mutate(variable = factor(variable, levels = c("TP23", "TP24"))) %>%
+  left_join(LTMs, by = c("StationId" = "STATION_ID"))
+
+reg_data <- rbind(chla_data, tn_data, tp_data)
+
+```
+
+```{r}
+# Run regressions
+modelSummaries <- list()  
+  
+  for (var in c("CHLa", "TN", "TP")) {
+    
+    model_data <- reg_data %>%
+      filter(grepl(var, variable)) %>%
+      filter(!is.na(value))
+    
+    x_col <- paste0(var, "LTM")
+    formula <- as.formula(paste("value ~", x_col))
+    
+    # Run mblm model
+    model <- mblm::mblm(formula, data = model_data)
+    mod.sum <- mblm::summary.mblm(model)
+    
+    # Store results (directly, without creating the combined station-variable name)
+    modelSummary <- list(
+      variable = var,
+      slope = mod.sum$coefficients[2, 1],
+      MAD = mod.sum$coefficients[x_col[1], "MAD"],
+      pvalue = mod.sum$coefficients[x_col[1], 4],
+      intercept = mod.sum$coefficients[1, 1]
+    )
+    
+    modelSummaries[[var]] <- modelSummary
+  }
+
+```
+
+#### Extract Regression Statistics into single table
+
+```{r `regression stats`}
+ reg.df <- data.frame(variable = c("CHLa", "TN", "TP"),
+               model_slope = rep(NA, 3),
+               model_MAD = rep(NA, 3),
+               model_pval = rep(NA, 3),
+               model_intercept = rep(NA, 3))
+
+for (i in seq_along(1:3)) {
+  var <- c("CHLa", "TN", "TP")[i]
+  modelSum <- modelSummaries[[var]]
+      
+        reg.df$model_slope[i] <- modelSum$slope
+        reg.df$model_MAD[i] <- modelSum$MAD
+        reg.df$model_pval[i] <-  modelSum$pvalue
+        reg.df$model_intercept[i] <-  modelSum$intercept
+      }
+
+#Prepare regression df for plotting
+reg_plot <- reg.df %>%
+  mutate(pval_render = case_when(
+    model_pval > 0.05 ~ paste0("p = ", formatC(model_pval, digits = 2, format = "f")),
+    model_pval < 0.05 & model_pval >= 0.001 ~ paste0("p = ", formatC(model_pval, digits = 3, format = "f")),
+    model_pval < 0.001 ~ "p < 0.001"
+  ),
+  y_label = case_when(
+    variable == "CHLa" ~ "CHLa (\u03BCg L\u207B\u00B9)",
+    variable == "TP" ~ "TP (mg L\u207B\u00B9)",
+    variable == "TN" ~ "TN (mg L\u207B\u00B9)"
+  ))
+
+```
+
+#### Merge Annual average (2023 and 2024) and long-term average values with staiton-specific trend statistics.
+
+The newly derived annual averages and long-term averages should be merged with the station-specific trend statistics from previous water clarity analysis.
+"Note that only a small proportion (possibly none) of the microcystin survey sites will have staiton-specific trend estimates for CHLa, TN or TP."
+
+In the output dataframe, one station - 2-APP020.23 - has no station-specific trend statistics for CHLa or TN, despite having a long-term mean. Checking the metadata reveals that for CHLa, the station had *9* years of data, where our threshold was *10* for inclusion in the trend analysis. 
+
+```{r}
+station_specific_trends <- read_csv("~/Desktop/Bukaveckas_WaterLab/water-clarity-analysis/data/station_level_data/longTerm_Annual_Regression_Statistics_ALLSTATIONS.csv") %>%
+    select(-model_intercept) %>%
+    mutate(variable = case_when(
+      grepl("NITROGEN", variable) ~ "TN",
+      grepl("PHOSPHORUS", variable) ~ "TP",
+      TRUE ~ variable
+    )) %>%
+    filter(variable %in% c("CHLa", "TN", "TP"))
+
+
+x <- station_specific_trends %>%
+  pivot_wider(names_from = variable, values_from = c(model_slope, model_MAD, model_pval)) %>%
+  select(
+    STATION_ID,
+    contains("CHLa"),
+    contains("TN"),
+    contains("TP"),
+    everything()
+  )
+
+colnames(x) <- gsub("model_", "", colnames(x))
+
+
+# Merge with annual averages and LTMs
+output <- ann_plus_LTM %>%
+  left_join(x, by = c("StationId" = "STATION_ID"))
+
+write_csv(output, "data/final_processed_dataset.csv")
+
+
+```
+
+
+#### Data viz
+
+```{r}
+# !------------------- CHLa -------------------------! 
+data_chla <- reg_data %>%
+      filter(grepl("CHLa", variable)) %>%
+      filter(!is.na(value))
+    
+reg_chla <- reg_plot[reg_plot$variable == "CHLa",]
+max_y <- max(data_chla$value, na.rm = TRUE) * 1.2
+# Calculate position for p-value: place it dynamically near the upper right, clear of the data points
+  pval_x_pos <- max(data_chla$CHLaLTM) - .5  # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.8           # Place it slightly below the upper limit of the y-axis
+
+ggplot(data_chla, aes(x = CHLaLTM, y = value)) +
+    geom_point() +
+      # Add p-value inside the plot, positioning dynamically
+      annotate("text", x = pval_x_pos, y = pval_y_pos, 
+               label = reg_chla$pval_render, size = 4.2, hjust = 1) +
+      # Regression line
+      annotate("segment", x = min(data_chla$CHLaLTM), 
+               xend = max(data_chla$CHLaLTM), 
+               y = reg_chla$model_intercept + reg_chla$model_slope * min(data_chla$CHLaLTM), 
+               yend = reg_chla$model_intercept  + reg_chla$model_slope * (max(data_chla$CHLaLTM)),
+               color = "red", linewidth = .42, alpha = .6) +
+      labs(title = NULL,
+           x ="CHLa (\u03BCg L\u207B\u00B9) LTM", 
+           y = "CHLa (\u03BCg L\u207B\u00B9) May-Sep Annual Mean") +
+      theme_minimal() +
+      # Make x and y axes black without adding a border around the entire plot
+      theme(
+        axis.line = element_line(color = "black"),  # Make x and y axes black
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
+        plot.margin = unit(c(.2, .2, .2, .2), "cm")
+      )
+ggsave("figures/CHLa_annualVsLTM.jpg", width = 8, height = 6, dpi = 500)
+
+# !------------------- TN -------------------------! 
+data_TN <- reg_data %>%
+      filter(grepl("TN", variable)) %>%
+      filter(!is.na(value))
+    
+reg_TN <- reg_plot[reg_plot$variable == "TN",]
+max_y <- max(data_TN$value, na.rm = TRUE) * 1.2
+# Calculate position for p-value: place it dynamically near the upper right, clear of the data points
+  pval_x_pos <- max(data_TN$TNLTM)  # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.8           # Place it slightly below the upper limit of the y-axis
+
+ggplot(data_TN, aes(x = TNLTM, y = value)) +
+    geom_point() +
+      # Add p-value inside the plot, positioning dynamically
+      annotate("text", x = pval_x_pos, y = pval_y_pos, 
+               label = reg_TN$pval_render, size = 4.2, hjust = 1) +
+      # Regression line
+      annotate("segment", x = min(data_TN$TNLTM), 
+               xend = max(data_TN$TNLTM), 
+               y = reg_TN$model_intercept + reg_TN$model_slope * min(data_TN$TNLTM), 
+               yend = reg_TN$model_intercept  + reg_TN$model_slope * (max(data_TN$TNLTM)),
+               color = "red", linewidth = .42, alpha = .6) +
+      labs(title = NULL,
+           x ="TN (\u03BCg L\u207B\u00B9) LTM", 
+           y = "TN (\u03BCg L\u207B\u00B9) May-Sep Annual Mean") +
+      theme_minimal() +
+      # Make x and y axes black without adding a border around the entire plot
+      theme(
+        axis.line = element_line(color = "black"),  # Make x and y axes black
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
+        plot.margin = unit(c(.2, .2, .2, .2), "cm")
+      )
+ggsave("figures/TN_annualVsLTM.jpg", width = 8, height = 6, dpi = 500)
+
+
+# !------------------- TP -------------------------!
+data_TP <- reg_data %>%
+      filter(grepl("TP", variable)) %>%
+      filter(!is.na(value))
+    
+reg_TP <- reg_plot[reg_plot$variable == "TP",]
+max_y <- max(data_TP$value, na.rm = TRUE) * 1.2
+# Calculate position for p-value: place it dynamically near the upper right, clear of the data points
+  pval_x_pos <- max(data_TP$TPLTM)   # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.8           # Place it slightly below the upper limit of the y-axis
+
+ggplot(data_TP, aes(x = TPLTM, y = value)) +
+    geom_point() +
+      # Add p-value inside the plot, positioning dynamically
+      annotate("text", x = pval_x_pos, y = pval_y_pos, 
+               label = reg_TP$pval_render, size = 4.2, hjust = 1) +
+      # Regression line
+      annotate("segment", x = min(data_TP$TPLTM), 
+               xend = max(data_TP$TPLTM), 
+               y = reg_TP$model_intercept + reg_TP$model_slope * min(data_TP$TPLTM), 
+               yend = reg_TP$model_intercept  + reg_TP$model_slope * (max(data_TP$TPLTM)),
+               color = "red", linewidth = .42, alpha = .6) +
+      labs(title = NULL,
+           x ="TP (\u03BCg L\u207B\u00B9) LTM", 
+           y = "TP (\u03BCg L\u207B\u00B9) May-Sep Annual Mean") +
+  scale_y_continuous(breaks = seq(0.022, .033, 0.002)) +
+      theme_minimal() +
+      # Make x and y axes black without adding a border around the entire plot
+      theme(
+        axis.line = element_line(color = "black"),  # Make x and y axes black
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
+        plot.margin = unit(c(.2, .2, .2, .2), "cm")
+      )
+ggsave("figures/TP_annualVsLTM.jpg", width = 8, height = 6, dpi = 500)
+
+```

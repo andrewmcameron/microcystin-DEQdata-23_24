@@ -53,6 +53,8 @@ data_wide <- data %>%
 params <- c("CHLa", "TN", "TP")
 names(data_wide)[9:11] <- params
 
+data_wide$month_year <- factor(data_wide$month_year, levels = c("May-23", "Jun-23", "Jul-23", "Aug-23", "Sep-23", "May-24", "Jun-24", "Jul-24", "Aug-24", "Sep-24"))
+
 #Boxplots
 library(ggplot2)
 #CHLa
@@ -107,7 +109,7 @@ export_data <- data_wide %>%
          Depth = SamplingDepth)
 
 
-write_csv(export_data, "data/step1_data_MaytoSep_wide.csv")
+write_csv(export_data, "data/StationObs_MaytoSep_wide.csv")
 
 
 ```

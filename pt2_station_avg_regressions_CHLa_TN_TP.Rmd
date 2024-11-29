@@ -1,5 +1,5 @@
 ---
-title: "pt2_station_avg_regressions_CHLa_TN_TP"
+title: "Part 2: Station Average Regressions for Variable Pairs"
 author: "Andrew Cameron"
 date: "2024-11-24"
 output: html_document
@@ -14,7 +14,7 @@ StationID	StationName	AdminRegion	Depth	CHLa23	TN23	TP23	CHLa24	TN24	TP24
 
 ```{r}
 library(tidyverse)
-data <- read_csv("data/step1_data_MaytoSep_wide.csv")
+data <- read_csv("data/StationObs_MaytoSep_wide.csv")
 
 other_columns <- data %>% 
   select(StationId, StationName, AdminRegion)   # to be joined back later. Can't be retained in grouping/summarizing because lots of NA for StationName and AdminRegion.
@@ -55,7 +55,7 @@ data_avg_wide <- data_avg_wide %>%
   left_join(adminRegion, by = "StationId") %>%
   relocate(StationName, AdminRegion, .before = Depth)
 
-write_csv(data_avg_wide, "data/step2_station_avg_by_year.csv")
+write_csv(data_avg_wide, "data/station_avg_by_year.csv")
 
 ```
 
@@ -109,7 +109,7 @@ modelSummaries <- list()
   
 ```
 
-Extract Regression Statistics into single table
+#### Extract Regression Statistics into single table
 
 ```{r `regression stats`}
  reg.df <- data.frame(variable = c("CHLa", "TN", "TP"),
@@ -129,7 +129,7 @@ for (i in seq_along(1:3)) {
       }
 
 
-write_csv(reg.df, "data/step2_2023vs2024.csv")
+write_csv(reg.df, "data/regressionStats_2023vs2024.csv")
 
 #Prepare regression df for plotting
 reg_plot <- reg.df %>%
@@ -146,7 +146,7 @@ reg_plot <- reg.df %>%
 
 ```
 
-Data viz
+#### Data viz
 
 ```{r}
 # !------------------- CHLa -------------------------! 
@@ -166,7 +166,7 @@ ggplot(data_chla, aes(x = CHLa23, y = CHLa24)) +
       # Regression line
       annotate("segment", x = min(data_chla$CHLa23), 
                xend = max(data_chla$CHLa23), 
-               y = reg_chla$model_intercept , 
+               y = reg_chla$model_intercept + reg_chla$model_slope * min(data_chla$TP23), 
                yend = reg_chla$model_intercept  + reg_chla$model_slope * (max(data_chla$CHLa23)),
                color = "red", linewidth = .42, alpha = .6) +
       labs(title = NULL,
@@ -199,7 +199,7 @@ ggplot(data_TN, aes(x = TN23, y = TN24)) +
       # Regression line
       annotate("segment", x = min(data_TN$TN23), 
                xend = max(data_TN$TN23), 
-               y = reg_TN$model_intercept , 
+               y = reg_TN$model_intercept + reg_TN$model_slope * min(data_TN$TP23), 
                yend = reg_TN$model_intercept  + reg_TN$model_slope * (max(data_TN$TN23)),
                color = "red", linewidth = .42, alpha = .6) +
       labs(title = NULL,
@@ -216,24 +216,25 @@ ggplot(data_TN, aes(x = TN23, y = TN24)) +
       )
 ggsave("figures/TN_23vs24.jpg", width = 8, height = 6, dpi = 500)
 
-# !------------------- TP -------------------------! THIS ONE IS FUCKED UP ???
+
+# !------------------- TP -------------------------!
 data_TP <- data_avg_wide %>%
       filter(!is.na(TP23) & !is.na(TP24))
 reg_TP <- reg_plot[reg_plot$variable == "TP",]
-max_y <- max(data_TP$TP23, na.rm = TRUE) * 1.2
+max_y <- max(data_TP$TP24, na.rm = TRUE) * 1.2
 # Calculate position for p-value: place it dynamically near the upper right, clear of the data points
-  pval_x_pos <- max(data_TP$TP23) -.05  # Adjust the 5 to change how far left from the max Year
-  pval_y_pos <- max_y * 0.5           # Place it slightly below the upper limit of the y-axis
+  pval_x_pos <- max(data_TP$TP23) - .01   # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.8           # Place it slightly below the upper limit of the y-axis
 
 ggplot(data_TP, aes(x = TP23, y = TP24)) +
     geom_point() +
       # Add p-value inside the plot, positioning dynamically
       annotate("text", x = pval_x_pos, y = pval_y_pos, 
-               label = reg_TP$pval_render, size = 3.2, hjust = 1) +
+               label = reg_TP$pval_render, size = 4.2, hjust = 1) +
       # Regression line
       annotate("segment", x = min(data_TP$TP23), 
                xend = max(data_TP$TP23), 
-               y = reg_TP$model_intercept , 
+               y = reg_TP$model_intercept + reg_TP$model_slope * min(data_TP$TP23), 
                yend = reg_TP$model_intercept  + reg_TP$model_slope * (max(data_TP$TP23)),
                color = "red", linewidth = .42, alpha = .6) +
       labs(title = NULL,
@@ -241,18 +242,204 @@ ggplot(data_TP, aes(x = TP23, y = TP24)) +
            y = "TP (\u03BCg L\u207B\u00B9) 2024") +
       theme_minimal() +
       # Make x and y axes black without adding a border around the entire plot
+      # Make x and y axes black without adding a border around the entire plot
       theme(
         axis.line = element_line(color = "black"),  # Make x and y axes black
-        axis.title = element_text(size = 9.5),        # Adjust axis title size if needed
-        axis.text = element_text(size = 7.5, color = "black"),         # Adjust axis text size
-        plot.subtitle = element_text(size = 9),     # Adjust subtitle size
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
         plot.margin = unit(c(.2, .2, .2, .2), "cm")
       )
 
+ggsave("figures/TP_23vs24.jpg", width = 8, height = 6, dpi = 500)
+
+
 ```
 
-Output 2: regressions of station average values for CHLa vs. TP, CHLa vs. TN and TP vs. TN (stations samples in both years appear as 2 data points).	
+## Output 2: Regressions of station average values for CHLa vs. TP, CHLa vs. TN and TP vs. TN 
+
+I assumed the second variable was to be treated as the predictor in each of these pairs.
+Use long (data_avg) df for this, which has each variable in a single column
 
 ```{r}
+# Run models for each variable pair
+modSums_output2 <- list()  
+  
+  for (var_pair in list(c("CHLa", "TP"), c("CHLa", "TN"), c("TP", "TN"))) {
+    x <- var_pair[2]
+    y <- var_pair[1]
+    list_id <- paste(y, "vs", x)
+    
+    model_data <- data_avg %>%
+      filter(!is.na(!!sym(x)) & !is.na(!!sym(y)))
+    
+    formula <- as.formula(paste(y, "~", x))
+    
+    # Run mblm model
+    model <- mblm::mblm(formula, data = model_data)
+    mod.sum <- mblm::summary.mblm(model)
+    
+    # Store results (directly, without creating the combined station-variable name)
+    modelSummary <- list(
+      model = list_id,
+      slope = mod.sum$coefficients[2, 1],
+      MAD = mod.sum$coefficients[x, "MAD"],
+      pvalue = mod.sum$coefficients[x, 4],
+      intercept = mod.sum$coefficients[1, 1]
+    )
+    
+    modSums_output2[[list_id]] <- modelSummary
+  }
+
+```
+
+
+```{r `regression stats`}
+# Create single data frame with regression statistics
+ reg.df_output2 <- data.frame(model = c("CHLa vs TP", "CHLa vs TN", "TP vs TN"),
+               model_slope = rep(NA, 3),
+               model_MAD = rep(NA, 3),
+               model_pval = rep(NA, 3),
+               model_intercept = rep(NA, 3))
+
+for (i in seq_along(1:3)) {
+  modelSum <- modSums_output2[[reg.df_output2$model[i]]]
+        reg.df_output2$model_slope[i] <- modelSum$slope
+        reg.df_output2$model_MAD[i] <- modelSum$MAD
+        reg.df_output2$model_pval[i] <-  modelSum$pvalue
+        reg.df_output2$model_intercept[i] <-  modelSum$intercept
+      }
+
+
+write_csv(reg.df_output2, "data/regressionStats_variablePairs.csv")
+
+#Prepare regression df for plotting
+reg_plot2 <- reg.df_output2 %>%
+  mutate(pval_render = case_when(
+    model_pval > 0.05 ~ paste0("p = ", formatC(model_pval, digits = 2, format = "f")),
+    model_pval < 0.05 & model_pval >= 0.001 ~ paste0("p = ", formatC(model_pval, digits = 3, format = "f")),
+    model_pval < 0.001 ~ "p < 0.001"
+  ),
+  y_label = case_when(
+    grepl("TP", model) ~ "TP (mg L\u207B\u00B9)",
+    grepl("TN", model) ~ "TN (mg L\u207B\u00B9)"
+  )
+  )
+
+```
+
+#### Data viz
+
+```{r}
+# !------------------- CHLa vs TP -------------------------! 
+chlaVsTP <- data_avg %>%
+      filter(!is.na(CHLa) & !is.na(TP))
+reg_chlaVsTP <- reg_plot2 %>%
+  filter(model == "CHLa vs TP")
+
+max_y <- max(chlaVsTP$CHLa, na.rm = TRUE) * 1.05
+# Calculate position for p-value: place it dynamically near the upper right, clear of the data points
+  pval_x_pos <- max(chlaVsTP$TP) - .015  # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.95           # Place it slightly below the upper limit of the y-axis
+
+ggplot(chlaVsTP, aes(x = TP, y = CHLa)) +
+    geom_point() +
+      # Add p-value inside the plot, positioning dynamically
+      annotate("text", x = pval_x_pos, y = pval_y_pos, 
+               label = reg_chlaVsTP$pval_render, size = 4.2, hjust = 1) +
+      # Regression line
+      annotate("segment", x = min(chlaVsTP$TP), 
+               xend = max(chlaVsTP$TP), 
+               y = reg_chlaVsTP$model_intercept + reg_chlaVsTP$model_slope * min(chlaVsTP$TP), 
+               yend = reg_chlaVsTP$model_intercept  + reg_chlaVsTP$model_slope * (max(chlaVsTP$TP)),
+               color = "red", linewidth = .42, alpha = .6) +
+      labs(title = NULL,
+           x = "TP (\u03BCg L\u207B\u00B9)", 
+           y = "CHLa (\u03BCg L\u207B\u00B9)") +
+      theme_minimal() +
+      # Make x and y axes black without adding a border around the entire plot
+      theme(
+        axis.line = element_line(color = "black"),  # Make x and y axes black
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
+        plot.margin = unit(c(.2, .2, .2, .2), "cm")
+      )
+
+ggsave("figures/CHLa_vs_TP.jpg", width = 8, height = 6, dpi = 500)
+
+
+# !------------------- CHLa vs TN -------------------------! 
+chlaVsTN <- data_avg %>%
+      filter(!is.na(CHLa) & !is.na(TN))
+reg_chlaVsTN <- reg_plot2 %>%
+  filter(model == "CHLa vs TN")
+
+max_y <- max(chlaVsTN$CHLa, na.rm = TRUE) * 1.05
+# Calculate position for p-value: place it dynamically near the upper right, clear of the data points
+  pval_x_pos <- max(chlaVsTN$TN) - .015  # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.95           # Place it slightly below the upper limit of the y-axis
+
+ggplot(chlaVsTN, aes(x = TN, y = CHLa)) +
+    geom_point() +
+      # Add p-value inside the plot, positioning dynamically
+      annotate("text", x = pval_x_pos, y = pval_y_pos, 
+               label = reg_chlaVsTN$pval_render, size = 4.2, hjust = 1) +
+      # Regression line
+      annotate("segment", x = min(chlaVsTN$TN), 
+               xend = max(chlaVsTN$TN), 
+               y = reg_chlaVsTN$model_intercept + reg_chlaVsTN$model_slope * min(chlaVsTN$TN), 
+               yend = reg_chlaVsTN$model_intercept  + reg_chlaVsTN$model_slope * (max(chlaVsTN$TN)),
+               color = "red", linewidth = .42, alpha = .6) +
+      labs(title = NULL,
+           x = "TN (\u03BCg L\u207B\u00B9)", 
+           y = "CHLa (\u03BCg L\u207B\u00B9)") +
+      theme_minimal() +
+      # Make x and y axes black without adding a border around the entire plot
+      theme(
+        axis.line = element_line(color = "black"),  # Make x and y axes black
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
+        plot.margin = unit(c(.2, .2, .2, .2), "cm")
+      )
+
+ggsave("figures/CHLa_vs_TN.jpg", width = 8, height = 6, dpi = 500)
+
+
+# !------------------- TP vs TN -------------------------! 
+TPVsTN <- data_avg %>%
+      filter(!is.na(TP) & !is.na(TN))
+reg_TPVsTN <- reg_plot2 %>%
+  filter(model == "TP vs TN")
+
+max_y <- max(TPVsTN$TP, na.rm = TRUE) * 1.05
+# Calculate position for p-value: place it dynamically near the upper right, clear of the data points
+  pval_x_pos <- max(TPVsTN$TN) - .015  # Adjust the 5 to change how far left from the max Year
+  pval_y_pos <- max_y * 0.95           # Place it slightly below the upper limit of the y-axis
+
+ggplot(TPVsTN, aes(x = TN, y = TP)) +
+    geom_point() +
+      # Add p-value inside the plot, positioning dynamically
+      annotate("text", x = pval_x_pos, y = pval_y_pos, 
+               label = reg_TPVsTN$pval_render, size = 4.2, hjust = 1) +
+      # Regression line
+      annotate("segment", x = min(TPVsTN$TN), 
+               xend = max(TPVsTN$TN), 
+               y = reg_TPVsTN$model_intercept + reg_TPVsTN$model_slope * min(TPVsTN$TN), 
+               yend = reg_TPVsTN$model_intercept  + reg_TPVsTN$model_slope * (max(TPVsTN$TN)),
+               color = "red", linewidth = .42, alpha = .6) +
+      labs(title = NULL,
+           x = "TN (\u03BCg L\u207B\u00B9)", 
+           y = "TP (\u03BCg L\u207B\u00B9)") +
+      theme_minimal() +
+      # Make x and y axes black without adding a border around the entire plot
+      theme(
+        axis.line = element_line(color = "black"),  # Make x and y axes black
+        axis.title = element_text(size = 14),        # Adjust axis title size if needed
+        axis.text = element_text(size = 10, color = "black"),         # Adjust axis text size
+        plot.margin = unit(c(.2, .2, .2, .2), "cm")
+      )
+
+ggsave("figures/TP_vs_TN.jpg", width = 8, height = 6, dpi = 500)
+
+
 
 ```
