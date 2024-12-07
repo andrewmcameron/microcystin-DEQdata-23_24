@@ -48,7 +48,8 @@ data <- data %>%
 #Transform data to align parameters by column
 data_wide <- data %>%
   pivot_wider(names_from = Storetparameter, values_from = AnalyticalValue) %>%
-  filter(month %in% 5:9)
+  filter(month %in% 5:9) %>%
+  mutate(year_group = ifelse(grepl("-23", month_year), "2023", "2024")) # to allow for coloring data by year for visual improvement
 
 params <- c("CHLa", "TN", "TP")
 names(data_wide)[9:11] <- params
@@ -59,16 +60,19 @@ data_wide$month_year <- factor(data_wide$month_year, levels = c("May-23", "Jun-2
 library(ggplot2)
 #CHLa
 data_wide %>%
-  filter(month %in% 5:9) %>%
   filter(!is.na(CHLa)) %>%
   ggplot(aes(x = month_year, y = CHLa)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(width = 0.1, alpha = 0.45, size = 0.7) + 
+  geom_vline(xintercept = 5.5, linetype = "dashed", color = "grey30") +
   labs(title = NULL, 
        x = NULL, 
        y = "CHLa (\u03BCg L\u207B\u00B9)") +
   theme_minimal() +
-  theme(axis.line = element_line(colour = "black"))
+  theme(legend.position = "none",
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 12),    
+        axis.title = element_text(size = 14))
 
 ggsave("figures/boxplot_CHLa.jpg", width = 8, height = 6, dpi = 500)
 
@@ -79,11 +83,15 @@ data_wide %>%
   ggplot(aes(x = month_year, y = TN)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(width = 0.1, alpha = 0.45, size = 0.7) + 
+  geom_vline(xintercept = 5.5, linetype = "dashed", color = "grey30") +
   labs(title = NULL, 
        x = NULL, 
-       y = "TN (mg N L\u207B\u00B9)") +
+       y = "TN (mg L\u207B\u00B9)") +
   theme_minimal() +
-  theme(axis.line = element_line(colour = "black"))
+  theme(legend.position = "none",
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 12),    
+        axis.title = element_text(size = 14))
 
 ggsave("figures/boxplot_TN.jpg", width = 8, height = 6, dpi = 500)
 
@@ -91,14 +99,19 @@ ggsave("figures/boxplot_TN.jpg", width = 8, height = 6, dpi = 500)
 data_wide %>%
   filter(month %in% 5:9) %>%
   filter(!is.na(TP)) %>%
-  ggplot(aes(x = month_year, y = TP)) +
+  ggplot(aes(x = month_year, y = TP, color = year_group)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(width = 0.1, alpha = 0.45, size = 0.7) + 
+  geom_vline(xintercept = 5.5, linetype = "dashed", color = "grey30") +
   labs(title = NULL, 
        x = NULL, 
-       y = "TP (mg N L\u207B\u00B9)") +
+       y = "TP (mg L\u207B\u00B9)") +
+  scale_color_manual(values = c("2023" = "#08415C", "2024" = "salmon3")) + # Customize colors
   theme_minimal() +
-  theme(axis.line = element_line(colour = "black"))
+  theme(legend.position = "none",
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 12),    
+        axis.title = element_text(size = 14))
 
 ggsave("figures/boxplot_TP.jpg", width = 8, height = 6, dpi = 500)
 
