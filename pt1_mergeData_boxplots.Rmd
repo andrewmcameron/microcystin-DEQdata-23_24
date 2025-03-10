@@ -8,15 +8,16 @@ Merge 2023 and 2024 data and align analytical parameters by column
 Fields: 
 `StationID	StationName	AdminRegion	DateTime	Depth	CHLa	TN	TP`
 
-Note: StationName and AdminRegion not available for all stations (to be added later).	
+Note: StationName and AdinRegion not available for all stations (to be added later).	
 
 Output: boxplots showing monthly values (May-Sep) across all stations sampled in a given year for CHLa, TN and TP (5 mo x 2 y = 10 boxes).	
 
 ```{r}
 source("C:/Users/andre/my_functions.R")
 library(tidyverse)
-data23 <- openxlsx::read.xlsx("data/DEQ 2023-24 Reservoir Data for MC Survey.xlsx", sheet = 2)
-data24 <- openxlsx::read.xlsx("data/DEQ 2023-24 Reservoir Data for MC Survey.xlsx", sheet = 3)
+data23 <- openxlsx::read.xlsx("data/received/DEQ 2023-24 Reservoir Data for MC Survey.xlsx", sheet = 2)
+data24 <- openxlsx::read.xlsx("data/received/DEQ 2023-24 Reservoir Data for MC Survey.xlsx", sheet = 3)
+
 
 #Add missing columns and standardize column order
 data23 <- data23 %>%
